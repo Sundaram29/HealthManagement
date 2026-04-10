@@ -1,0 +1,1 @@
+globalThis.__RSC_MANIFEST=(globalThis.__RSC_MANIFEST||{});globalThis.__RSC_MANIFEST["/api/logout/route"]={"moduleLoading":{"prefix":"/_next/"},"ssrModuleMapping":{},"edgeSSRModuleMapping":{},"clientModules":{},"entryCSSFiles":{"D:\\WD\\HealthManagement\\hospital_admin\\src\\app\\api\\logout\\route":[]},"rscModuleMapping":{},"edgeRscModuleMapping":{}};
