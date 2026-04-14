@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -32,7 +32,7 @@ const formatSelectedDate = (date: Date | null) =>
       }).format(date)
     : "Choose a date";
 
-const Page = () => {
+const BookAppointmentContent = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const doctorId = searchParams.get("doctorId");
@@ -335,7 +335,7 @@ const Page = () => {
                 </span>
                 <DatePicker
                   selected={selectedDate}
-                  onChange={(date) => setSelectedDate(date)}
+                  onChange={(date: Date | null) => setSelectedDate(date)}
                   minDate={minDate}
                   placeholderText="Select appointment date"
                   dateFormat="dd MMMM yyyy"
@@ -439,7 +439,7 @@ const Page = () => {
               <DatePicker
                 inline
                 selected={selectedDate}
-                onChange={(date) => setSelectedDate(date)}
+                onChange={(date: Date | null) => setSelectedDate(date)}
                 minDate={minDate}
                 calendarClassName="appointment-calendar"
               />
@@ -479,4 +479,10 @@ const Page = () => {
   );
 };
 
-export default Page;
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <BookAppointmentContent />
+    </Suspense>
+  );
+}

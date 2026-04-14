@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Activity, ArrowLeft, Clock, Mail, MapPin, Phone, Star, Stethoscope, Users } from "lucide-react";
@@ -44,7 +44,7 @@ const getInitials = (name: string) =>
     .join("")
     .slice(0, 2);
 
-export default function HospitalPage() {
+function HospitalPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const hospitalId = searchParams.get("hospitalId");
@@ -201,5 +201,13 @@ export default function HospitalPage() {
         </section>
       </main>
     </div>
+  );
+}
+
+export default function HospitalPage() {
+  return (
+    <Suspense fallback={null}>
+      <HospitalPageContent />
+    </Suspense>
   );
 }

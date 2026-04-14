@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronDown, Search, Star, Stethoscope } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
 
@@ -89,7 +89,7 @@ function DoctorCard({ doctor }) {
   );
 }
 
-export default function DoctorsPage() {
+function DoctorsPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -283,5 +283,13 @@ export default function DoctorsPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function DoctorsPage() {
+  return (
+    <Suspense fallback={null}>
+      <DoctorsPageContent />
+    </Suspense>
   );
 }

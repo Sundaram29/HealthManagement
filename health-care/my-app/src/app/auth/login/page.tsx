@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { Suspense, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "react-hot-toast";
 import RoleLoginShell from "../../components/auth/RoleLoginShell";
 
-const Page = () => {
+const LoginContent = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -120,4 +120,10 @@ const Page = () => {
   );
 };
 
-export default Page;
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <LoginContent />
+    </Suspense>
+  );
+}
