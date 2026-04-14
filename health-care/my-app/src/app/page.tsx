@@ -108,7 +108,7 @@ const QUICK_CARDS = [
     color: "from-sky-500 to-blue-600",
     bg: "bg-sky-50",
     iconColor: "text-sky-600",
-    route: null,
+    route: "/ai-chatbot",
   },
 ];
 
@@ -245,6 +245,8 @@ export default function Dashboard() {
 
     router.push(route);
   };
+
+  const protectedRoutes = new Set(["/MyAppointment", "/ai-chatbot"]);
 
   return (
     <>
@@ -414,7 +416,18 @@ export default function Dashboard() {
                 return (
                   <div
                     key={i}
-                    onClick={() => item.route && (item.route === "/MyAppointment" ? handleProtectedRoute(item.route) : router.push(item.route))}
+                    onClick={() => {
+                      if (!item.route) {
+                        return;
+                      }
+
+                      if (protectedRoutes.has(item.route)) {
+                        void handleProtectedRoute(item.route);
+                        return;
+                      }
+
+                      router.push(item.route);
+                    }}
                     className={`card-hover bg-white rounded-2xl p-5 border border-gray-100 cursor-pointer group ${!item.route ? "opacity-90" : ""}`}
                     style={{ animationDelay: `${i * 0.06}s` }}
                   >
@@ -504,10 +517,13 @@ export default function Dashboard() {
                   Check your symptoms instantly with our AI-powered health assistant.
                 </p>
               </div>
-              <button className="mt-6 flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-white text-indigo-700 text-sm font-semibold hover:bg-indigo-50 transition cursor-pointer">
-                <Sparkles size={14} />
-                Start AI Check
-              </button>
+                <button
+                  onClick={() => void handleProtectedRoute("/ai-chatbot")}
+                  className="mt-6 flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-white text-indigo-700 text-sm font-semibold hover:bg-indigo-50 transition cursor-pointer"
+                >
+                  <Sparkles size={14} />
+                  Start AI Check
+                </button>
             </div>
           </div>
 

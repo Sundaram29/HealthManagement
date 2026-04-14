@@ -16,6 +16,45 @@ const BLOOD_COMPONENTS = [
 
 const BLOOD_TYPES = ["All", "A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
 
+type ToastMessage = {
+  id: number;
+  title: string;
+  msg: string;
+  type: "error" | "success";
+};
+
+type BloodInventoryRecord = {
+  id?: number;
+  type: string;
+  available: boolean;
+  units: number;
+  component: string;
+  lastUpdated: string;
+};
+
+type BloodBankRecord = {
+  id: number;
+  state: string;
+  district: string;
+  hospitalName: string;
+  address: string;
+  contact: string;
+  bloodGroups: BloodInventoryRecord[];
+};
+
+type SearchRow = {
+  hospitalId: number;
+  hospitalName: string;
+  district: string;
+  address: string;
+  contact: string;
+  bloodType: string;
+  available: boolean;
+  units: number;
+  component: string;
+  lastUpdated: string;
+};
+
 // ─── Styles ────────────────────────────────────────────────────────────────────
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap');
@@ -353,20 +392,20 @@ const STYLES = `
 
 // ─── Toast ─────────────────────────────────────────────────────────────────────
 function useToast() {
-  const [toasts, setToasts] = useState([]);
-  const add = useCallback((title, msg, type = "error") => {
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const add = useCallback((title: string, msg: string, type: ToastMessage["type"] = "error") => {
     const id = Date.now();
     setToasts(p => [...p, { id, title, msg, type }]);
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4000);
   }, []);
-  const remove = useCallback(id => setToasts(p => p.filter(t => t.id !== id)), []);
+  const remove = useCallback((id: number) => setToasts(p => p.filter(t => t.id !== id)), []);
   return { toasts, add, remove };
 }
 
-function Toasts({ toasts, remove }) {
+function Toasts({ toasts, remove }: { toasts: ToastMessage[]; remove: (id: number) => void }) {
   return (
     <div className="toast-container">
-      {toasts.map(t => (
+      {toasts.map((t) => (
         <div key={t.id} className={`toast ${t.type}`}>
           <div className={`toast-icon ${t.type}`}>{t.type === "error" ? "!" : "✓"}</div>
           <div className="toast-body">
@@ -390,11 +429,11 @@ export default function BloodAvailability() {
   const [selectedBlood, setSelectedBlood] = useState("All");
   const [selectedComponent, setSelectedComponent] = useState("All Components");
   const [tableSearch, setTableSearch] = useState("");
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState<SearchRow[]>([]);
   const [searched, setSearched] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
-  const [data, setData] = useState([]);
+  const [data, setData] = useState<BloodBankRecord[]>([]);
 
   useEffect(() => {
     const loadBloodBanks = async () => {
@@ -414,11 +453,11 @@ export default function BloodAvailability() {
     loadBloodBanks();
   }, [addToast]);
 
-  const states = [...new Set(data.map(bank => bank.state))];
+  const states = [...new Set(data.map((bank) => bank.state))];
   const districts = [...new Set(
     data
-      .filter(bank => bank.state === selectedState)
-      .map(bank => bank.district)
+      .filter((bank) => bank.state === selectedState)
+      .map((bank) => bank.district)
   )];
 
   const handleSearch = useCallback(() => {
@@ -435,7 +474,7 @@ export default function BloodAvailability() {
       return;
     }
 
-    const filtered = data.filter(bank => {
+    const filtered = data.filter((bank) => {
       const ms = bank.state === selectedState;
       const md = selectedDistrict ? bank.district === selectedDistrict : true;
       const mh = hospitalSearch
@@ -444,9 +483,9 @@ export default function BloodAvailability() {
       return ms && md && mh;
     });
 
-    const result = [];
-    filtered.forEach(bank => {
-      bank.bloodGroups.forEach(bg => {
+    const result: SearchRow[] = [];
+    filtered.forEach((bank) => {
+      bank.bloodGroups.forEach((bg) => {
         const mb = bg.type === selectedBlood;
         const mc = selectedComponent === "All Components" ? true : bg.component === selectedComponent;
         const ma = bg.available && bg.units > 0;
@@ -479,7 +518,7 @@ export default function BloodAvailability() {
   }, [selectedState, selectedDistrict, hospitalSearch, selectedBlood, selectedComponent, data, addToast]);
 
   const filteredRows = tableSearch
-    ? rows.filter(r =>
+    ? rows.filter((r) =>
         r.hospitalName.toLowerCase().includes(tableSearch.toLowerCase()) ||
         r.bloodType.toLowerCase().includes(tableSearch.toLowerCase())
       )
@@ -488,7 +527,7 @@ export default function BloodAvailability() {
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const paged = filteredRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  const availCount = rows.filter(r => r.available).length;
+  const availCount = rows.filter((r) => r.available).length;
   const totalUnits = rows.reduce((s, r) => s + r.units, 0);
 
   return (

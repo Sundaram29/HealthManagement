@@ -5,7 +5,7 @@ const globalForPrisma = globalThis
 
 function createPrismaClient() {
   if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL is not configured')
+    return null
   }
 
   const adapter = new PrismaPg({
@@ -14,8 +14,21 @@ function createPrismaClient() {
   return new PrismaClient({ adapter })
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient()
+function createMissingDatabaseProxy() {
+  return new Proxy(
+    {},
+    {
+      get() {
+        throw new Error('DATABASE_URL is not configured')
+      },
+    }
+  )
+}
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma
+const prismaClient = globalForPrisma.prisma ?? createPrismaClient()
+
+export const prisma = prismaClient ?? createMissingDatabaseProxy()
+
+if (process.env.NODE_ENV !== 'production' && prismaClient) {
+  globalForPrisma.prisma = prismaClient
 }
