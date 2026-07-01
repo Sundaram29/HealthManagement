@@ -10,7 +10,7 @@ export async function GET() {
         });
         return Response.json(data);
 
-    } catch (error) {
+    } catch {
         return Response.json({error: "Failed to fetch"}, {status: 500});
     }
 }
