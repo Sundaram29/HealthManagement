@@ -48,6 +48,8 @@ model User {
 model Hospital {
   id                   Int        @id @default(autoincrement())
   name                 String
+  code                 String?    @unique
+  slug                 String?    @unique
   username             String?    @unique
   password             String?
   email                String
@@ -63,8 +65,10 @@ model Hospital {
   profileCompleted     Boolean    @default(false)
   description          String?
   doctors              Doctor[]
+  patients             Patient[]
   appointments         Appointment[]
   bloodBank            BloodBank?
+  bloodRequests        BloodRequest[]
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @default(now()) @updatedAt
 }
@@ -80,6 +84,8 @@ model Doctor {
   college       String
   tags          String[]
   available     String
+  department    String?
+  contact       String?
   conditions    String[]
 
   hospitalId    Int
@@ -88,9 +94,26 @@ model Doctor {
   appointments  Appointment[]
 }
 
+model Patient {
+  id             Int      @id @default(autoincrement())
+  name           String
+  age            Int?
+  gender         String?
+  phone          String?
+  email          String?
+  address        String?
+  bloodGroup     String?
+  primaryConcern String?
+  hospitalId     Int
+  hospital       Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+}
+
 enum AppointmentStatus {
   pending
   confirmed
+  completed
   cancelled
 }
 
@@ -155,6 +178,7 @@ enum BloodRequestStatus {
   pending
   approved
   rejected
+  delivered
 }
 
 model BloodRequest {
@@ -166,11 +190,16 @@ model BloodRequest {
   bloodType      String
   component      String
   requestedUnits Int
+  urgency        String             @default("routine")
+  reason         String?
+  requiredDate   DateTime?
   message        String?
   status         BloodRequestStatus @default(pending)
   reviewedAt     DateTime?
   bloodBankId    Int
   bloodBank      BloodBank          @relation(fields: [bloodBankId], references: [id], onDelete: Cascade)
+  hospitalId     Int?
+  hospital       Hospital?          @relation(fields: [hospitalId], references: [id], onDelete: SetNull)
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @default(now()) @updatedAt
 }

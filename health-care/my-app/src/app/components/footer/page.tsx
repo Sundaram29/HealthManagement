@@ -13,7 +13,7 @@ export default function Footer({ className = "mt-10" }: FooterProps) {
         {/* LOGO + ABOUT */}
         <div>
           <h2 className="text-2xl font-bold mb-4 text-purple-300">
-            HealthCare+
+            MediCare+
           </h2>
 
           <p className="text-gray-300 text-sm leading-relaxed">

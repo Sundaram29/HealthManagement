@@ -1,18 +1,14 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BLOOD_COMPONENTS, BLOOD_TYPES } from "../../../lib/blood";
 
-type SessionPayload = {
-  name: string;
-  email: string;
-};
-
-type HospitalRecord = {
+type Hospital = {
   id: number;
   name: string;
+  code?: string | null;
+  slug?: string | null;
   email: string;
   city?: string | null;
   state?: string | null;
@@ -23,607 +19,448 @@ type HospitalRecord = {
   description?: string | null;
   specialties: string[];
   isOpen24Hours: boolean;
-  profileCompleted: boolean;
 };
 
-type DoctorRecord = {
+type Doctor = {
   id: number;
   name: string;
   specialty: string;
+  department?: string | null;
+  contact?: string | null;
+  available: string;
   experience: string;
   qualification: string;
-  available: string;
 };
 
-type AppointmentRecord = {
+type Patient = {
   id: number;
   name: string;
-  phone: string;
-  problem: string;
-  status: string;
-  appointmentDate: string;
-  appointmentTime: string;
-  doctor: {
-    name: string;
-  };
-  user?: {
-    email?: string | null;
-  } | null;
+  age?: number | null;
+  gender?: string | null;
+  phone?: string | null;
+  bloodGroup?: string | null;
+  primaryConcern?: string | null;
+  createdAt: string;
 };
 
-type BloodInventoryRecord = {
-  id: number;
-  type: string;
-  component: string;
-  units: number;
-  available: boolean;
-};
-
-type BloodBankRecord = {
+type BloodBank = {
   id: number;
   hospitalName: string;
   district: string;
   state: string;
-  address: string;
   contact: string;
-  bloodGroups: BloodInventoryRecord[];
+  bloodGroups: { id: number; type: string; component: string; units: number; available: boolean }[];
 };
 
-type BloodRequestRecord = {
+type BloodRequest = {
   id: number;
   patientName?: string | null;
   bloodType: string;
   component: string;
   requestedUnits: number;
-  requesterPhone?: string | null;
-  message?: string | null;
-  status: string;
+  urgency?: string | null;
+  reason?: string | null;
+  requiredDate?: string | null;
+  status: "pending" | "approved" | "rejected" | "delivered";
   createdAt: string;
-  bloodBank: {
-    hospitalName: string;
-  };
-};
-
-type HospitalPortalPayload = {
-  session: SessionPayload;
-  hospital: HospitalRecord;
-  doctors: DoctorRecord[];
-  appointments: AppointmentRecord[];
-  bloodBanks: BloodBankRecord[];
-  requests: BloodRequestRecord[];
-  stats: {
-    doctors: number;
-    appointments: number;
-    pendingAppointments: number;
-    bloodRequests: number;
-  };
+  bloodBank: { hospitalName: string };
 };
 
 type RequestForm = {
   bloodBankId: string;
+  patientName: string;
+  requesterPhone: string;
   bloodType: string;
   component: string;
   requestedUnits: string;
-  patientName: string;
-  requesterPhone: string;
-  message: string;
+  urgency: string;
+  reason: string;
+  requiredDate: string;
 };
 
-const statusClasses: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-800",
-  confirmed: "bg-sky-100 text-sky-800",
-  completed: "bg-emerald-100 text-emerald-800",
-  cancelled: "bg-rose-100 text-rose-700",
-  approved: "bg-sky-100 text-sky-800",
-  rejected: "bg-rose-100 text-rose-700",
+type Portal = {
+  hospital: Hospital;
+  doctors: Doctor[];
+  patients: Patient[];
+  bloodBanks: BloodBank[];
+  requests: BloodRequest[];
+  stats: {
+    doctors: number;
+    patients: number;
+    bloodRequests: number;
+    pending: number;
+    approved: number;
+    rejected: number;
+    delivered: number;
+  };
 };
 
-const emptyProfile = {
-  city: "",
-  state: "",
-  address: "",
-  pincode: "",
+const emptyDoctor = {
+  id: "",
+  name: "",
+  department: "",
+  specialty: "",
+  contact: "",
+  available: "Mon-Fri, 10:00 AM - 4:00 PM",
+  experience: "",
+  qualification: "",
+};
+
+const emptyPatient = {
+  name: "",
+  age: "",
+  gender: "",
   phone: "",
-  website: "",
-  description: "",
-  specialtiesText: "",
-  isOpen24Hours: false,
+  email: "",
+  address: "",
+  bloodGroup: "",
+  primaryConcern: "",
 };
 
 const emptyRequest: RequestForm = {
   bloodBankId: "",
+  patientName: "",
+  requesterPhone: "",
   bloodType: BLOOD_TYPES[0],
   component: BLOOD_COMPONENTS[0],
   requestedUnits: "1",
-  patientName: "",
-  requesterPhone: "",
-  message: "",
+  urgency: "routine",
+  reason: "",
+  requiredDate: "",
+};
+
+const statusClasses = {
+  pending: "bg-amber-50 text-amber-700 ring-amber-200",
+  approved: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  rejected: "bg-rose-50 text-rose-700 ring-rose-200",
+  delivered: "bg-sky-50 text-sky-700 ring-sky-200",
 };
 
 export default function HospitalDashboardPage() {
   const router = useRouter();
-  const [portal, setPortal] = useState<HospitalPortalPayload | null>(null);
+  const [portal, setPortal] = useState<Portal | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [submittingRequest, setSubmittingRequest] = useState(false);
-  const [profileForm, setProfileForm] = useState(emptyProfile);
-  const [requestForm, setRequestForm] = useState<RequestForm>(emptyRequest);
+  const [saving, setSaving] = useState("");
+  const [doctorForm, setDoctorForm] = useState(emptyDoctor);
+  const [patientForm, setPatientForm] = useState(emptyPatient);
+  const [requestForm, setRequestForm] = useState(emptyRequest);
+  const [profileForm, setProfileForm] = useState({
+    city: "",
+    state: "",
+    address: "",
+    pincode: "",
+    phone: "",
+    website: "",
+    description: "",
+    specialties: "",
+    isOpen24Hours: false,
+  });
 
-  useEffect(() => {
-    const loadPortal = async () => {
-      try {
-        const response = await fetch("/api/portal/hospital", {
-          cache: "no-store",
-          credentials: "include",
-        });
+  const loadPortal = useCallback(async () => {
+    const response = await fetch("/api/portal/hospital", { cache: "no-store", credentials: "include" });
 
-        if (response.status === 401) {
-          router.replace("/hospital/login");
-          return;
-        }
+    if (response.status === 401) {
+      router.replace("/hospital/login");
+      return;
+    }
 
-        const payload = await response.json().catch(() => ({ error: "Unable to load hospital portal." }));
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload?.error || "Unable to load hospital dashboard.");
+    }
 
-        if (!response.ok) {
-          throw new Error(payload?.error || "Unable to load hospital portal.");
-        }
-
-        setPortal(payload);
-        setProfileForm({
-          city: payload.hospital.city ?? "",
-          state: payload.hospital.state ?? "",
-          address: payload.hospital.address ?? "",
-          pincode: payload.hospital.pincode ?? "",
-          phone: payload.hospital.phone ?? "",
-          website: payload.hospital.website ?? "",
-          description: payload.hospital.description ?? "",
-          specialtiesText: payload.hospital.specialties.join(", "),
-          isOpen24Hours: Boolean(payload.hospital.isOpen24Hours),
-        });
-        setRequestForm((current) => ({
-          ...current,
-          requesterPhone: payload.hospital.phone ?? "",
-        }));
-      } catch (error) {
-        console.error(error);
-        setMessage(error instanceof Error ? error.message : "Unable to load hospital portal.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void loadPortal();
+    setPortal(payload);
+    setProfileForm({
+      city: payload.hospital.city ?? "",
+      state: payload.hospital.state ?? "",
+      address: payload.hospital.address ?? "",
+      pincode: payload.hospital.pincode ?? "",
+      phone: payload.hospital.phone ?? "",
+      website: payload.hospital.website ?? "",
+      description: payload.hospital.description ?? "",
+      specialties: payload.hospital.specialties?.join(", ") ?? "",
+      isOpen24Hours: Boolean(payload.hospital.isOpen24Hours),
+    });
+    setRequestForm((current) => ({ ...current, requesterPhone: payload.hospital.phone ?? "" }));
   }, [router]);
 
-  const handleProfileSave = async () => {
-    setSavingProfile(true);
+  useEffect(() => {
+    loadPortal()
+      .catch((error) => setMessage(error instanceof Error ? error.message : "Unable to load hospital dashboard."))
+      .finally(() => setLoading(false));
+  }, [loadPortal]);
+
+  const inventoryMatches = useMemo(() => {
+    if (!portal) {
+      return [];
+    }
+
+    return portal.bloodBanks.flatMap((bank) =>
+      bank.bloodGroups.map((row) => ({
+        ...row,
+        bank: bank.hospitalName,
+        place: `${bank.district}, ${bank.state}`,
+      })),
+    );
+  }, [portal]);
+
+  async function mutate(method: "POST" | "PUT" | "DELETE", body: Record<string, unknown>, success: string) {
+    setSaving(String(body.action || method));
     setMessage("");
 
     try {
       const response = await fetch("/api/portal/hospital", {
-        method: "PUT",
+        method,
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...profileForm,
-          specialties: profileForm.specialtiesText,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
-      const payload = await response.json().catch(() => ({ error: "Unable to save profile." }));
+      const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload?.error || "Unable to save profile.");
+        throw new Error(payload?.error || "Request failed.");
       }
 
-      setPortal((current) =>
-        current
-          ? {
-              ...current,
-              hospital: payload.hospital,
-            }
-          : current,
-      );
-      setMessage("Hospital profile updated.");
+      await loadPortal();
+      setMessage(success);
+      return payload;
     } catch (error) {
-      console.error(error);
-      setMessage(error instanceof Error ? error.message : "Unable to save profile.");
+      setMessage(error instanceof Error ? error.message : "Request failed.");
+      return null;
     } finally {
-      setSavingProfile(false);
+      setSaving("");
     }
-  };
-
-  const handleRequestSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSubmittingRequest(true);
-    setMessage("");
-
-    try {
-      const response = await fetch("/api/portal/hospital", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...requestForm,
-          requestedUnits: Number(requestForm.requestedUnits),
-        }),
-      });
-      const payload = await response.json().catch(() => ({ error: "Unable to create request." }));
-
-      if (!response.ok) {
-        throw new Error(payload?.error || "Unable to create request.");
-      }
-
-      setPortal((current) =>
-        current
-          ? {
-              ...current,
-              requests: [payload.request, ...current.requests],
-              stats: {
-                ...current.stats,
-                bloodRequests: current.stats.bloodRequests + 1,
-              },
-            }
-          : current,
-      );
-      setRequestForm((current) => ({
-        ...emptyRequest,
-        requesterPhone: current.requesterPhone,
-      }));
-      setMessage("Blood request sent to the selected blood bank.");
-    } catch (error) {
-      console.error(error);
-      setMessage(error instanceof Error ? error.message : "Unable to create request.");
-    } finally {
-      setSubmittingRequest(false);
-    }
-  };
+  }
 
   if (loading) {
-    return (
-      <main className="min-h-screen bg-slate-100 px-6 py-10">
-        <div className="mx-auto max-w-6xl rounded-[32px] bg-white p-8 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-600">Hospital Portal</p>
-          <h1 className="mt-3 text-2xl font-semibold text-slate-900">Loading your workspace...</h1>
-        </div>
-      </main>
-    );
+    return <main className="min-h-screen bg-slate-100 p-8 text-slate-700">Loading hospital workspace...</main>;
   }
 
   if (!portal) {
-    return (
-      <main className="min-h-screen bg-slate-100 px-6 py-10">
-        <div className="mx-auto max-w-3xl rounded-[32px] bg-white p-8 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-600">Hospital Portal</p>
-          <h1 className="mt-3 text-2xl font-semibold text-slate-900">Hospital data is unavailable.</h1>
-          <p className="mt-3 text-slate-600">{message || "Please sign in again."}</p>
-        </div>
-      </main>
-    );
+    return <main className="min-h-screen bg-slate-100 p-8 text-slate-700">{message || "Hospital data is unavailable."}</main>;
   }
 
+  const cards = [
+    ["Total doctors", portal.stats.doctors],
+    ["Total patients", portal.stats.patients],
+    ["Blood requests", portal.stats.bloodRequests],
+    ["Pending", portal.stats.pending],
+    ["Approved", portal.stats.approved],
+    ["Rejected", portal.stats.rejected],
+  ];
+
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#eff6ff_0%,#f8fafc_35%,#ffffff_100%)] px-6 py-8">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-[32px] bg-[linear-gradient(135deg,#082f49_0%,#0f766e_42%,#0ea5e9_100%)] px-8 py-8 text-white shadow-2xl shadow-sky-100">
-          <div className="flex flex-wrap items-start justify-between gap-5">
+    <main className="min-h-screen bg-slate-100 text-slate-900">
+      <div className="grid min-h-screen lg:grid-cols-[260px_1fr]">
+        <aside className="bg-slate-950 px-6 py-7 text-white">
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-300">Hospital HMS</p>
+          <h1 className="mt-4 text-2xl font-semibold">{portal.hospital.name}</h1>
+          <p className="mt-2 text-sm text-slate-300">{portal.hospital.code || `HSP-${portal.hospital.id}`}</p>
+          <nav className="mt-8 space-y-2 text-sm text-slate-200">
+            {["Overview", "Profile", "Doctors", "Patients", "Blood requests", "Inventory"].map((item) => (
+              <a key={item} href={`#${item.toLowerCase().replaceAll(" ", "-")}`} className="block rounded-lg px-3 py-2 hover:bg-white/10">
+                {item}
+              </a>
+            ))}
+          </nav>
+        </aside>
+
+        <section className="px-4 py-5 sm:px-6 lg:px-8">
+          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-5">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-100">Unified Hospital Workspace</p>
-              <h1 className="mt-3 text-3xl font-semibold">{portal.hospital.name}</h1>
-              <p className="mt-3 max-w-3xl text-sm text-sky-50/90">
-                Manage your public profile, keep appointments visible, and coordinate blood-bank requests from the same merged healthcare app.
-              </p>
+              <p className="text-sm text-slate-500">Tenant dashboard</p>
+              <h2 className="text-2xl font-semibold">Operations command center</h2>
             </div>
-
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/HospitalList"
-                className="rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20"
-              >
-                View public listing
-              </Link>
-              <button
-                type="button"
-                onClick={async () => {
-                  await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-                  router.push("/hospital/login");
-                }}
-                className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-sky-900 transition hover:bg-sky-50"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-8 grid gap-4 md:grid-cols-4">
-            <div className="rounded-3xl border border-white/10 bg-white/10 p-5">
-              <p className="text-xs uppercase tracking-[0.3em] text-sky-100">Doctors</p>
-              <p className="mt-2 text-2xl font-semibold">{portal.stats.doctors}</p>
-            </div>
-            <div className="rounded-3xl border border-white/10 bg-white/10 p-5">
-              <p className="text-xs uppercase tracking-[0.3em] text-sky-100">Appointments</p>
-              <p className="mt-2 text-2xl font-semibold">{portal.stats.appointments}</p>
-            </div>
-            <div className="rounded-3xl border border-white/10 bg-white/10 p-5">
-              <p className="text-xs uppercase tracking-[0.3em] text-sky-100">Pending</p>
-              <p className="mt-2 text-2xl font-semibold">{portal.stats.pendingAppointments}</p>
-            </div>
-            <div className="rounded-3xl border border-white/10 bg-white/10 p-5">
-              <p className="text-xs uppercase tracking-[0.3em] text-sky-100">Blood Requests</p>
-              <p className="mt-2 text-2xl font-semibold">{portal.stats.bloodRequests}</p>
-            </div>
-          </div>
-        </section>
-
-        {message ? (
-          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-            {message}
-          </div>
-        ) : null}
-
-        <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-          <div className="rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-sky-600">Profile</p>
-                <h2 className="mt-2 text-2xl font-semibold text-slate-900">Hospital profile</h2>
-              </div>
-              <button
-                type="button"
-                onClick={handleProfileSave}
-                disabled={savingProfile}
-                className="rounded-full bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {savingProfile ? "Saving..." : "Save Profile"}
-              </button>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-700">Registered Name</span>
-                <input value={portal.hospital.name} readOnly className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-500 outline-none" />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-700">Registered Email</span>
-                <input value={portal.session.email} readOnly className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-500 outline-none" />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-700">City</span>
-                <input value={profileForm.city} onChange={(event) => setProfileForm((current) => ({ ...current, city: event.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100" placeholder="City" />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-700">State</span>
-                <input value={profileForm.state} onChange={(event) => setProfileForm((current) => ({ ...current, state: event.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100" placeholder="State" />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-700">Phone</span>
-                <input value={profileForm.phone} onChange={(event) => setProfileForm((current) => ({ ...current, phone: event.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100" placeholder="Helpline or reception phone" />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-700">Pincode</span>
-                <input value={profileForm.pincode} onChange={(event) => setProfileForm((current) => ({ ...current, pincode: event.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100" placeholder="Pincode" />
-              </label>
-              <label className="space-y-2 md:col-span-2">
-                <span className="text-sm font-medium text-slate-700">Website</span>
-                <input value={profileForm.website} onChange={(event) => setProfileForm((current) => ({ ...current, website: event.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100" placeholder="https://yourhospital.example" />
-              </label>
-              <label className="space-y-2 md:col-span-2">
-                <span className="text-sm font-medium text-slate-700">Address</span>
-                <textarea value={profileForm.address} onChange={(event) => setProfileForm((current) => ({ ...current, address: event.target.value }))} className="min-h-24 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100" placeholder="Full hospital address" />
-              </label>
-              <label className="space-y-2 md:col-span-2">
-                <span className="text-sm font-medium text-slate-700">Specialties</span>
-                <input value={profileForm.specialtiesText} onChange={(event) => setProfileForm((current) => ({ ...current, specialtiesText: event.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100" placeholder="Cardiology, Emergency Care, Neurology" />
-              </label>
-              <label className="space-y-2 md:col-span-2">
-                <span className="text-sm font-medium text-slate-700">Description</span>
-                <textarea value={profileForm.description} onChange={(event) => setProfileForm((current) => ({ ...current, description: event.target.value }))} className="min-h-28 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100" placeholder="Describe your hospital, services, and strengths." />
-              </label>
-            </div>
-
-            <label className="mt-5 inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              <input type="checkbox" checked={profileForm.isOpen24Hours} onChange={(event) => setProfileForm((current) => ({ ...current, isOpen24Hours: event.target.checked }))} className="h-4 w-4 accent-sky-600" />
-              Open 24 hours
-            </label>
-          </div>
-
-          <form onSubmit={handleRequestSubmit} className="rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200">
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-rose-500">Blood Request</p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-900">Request units from a blood bank</h2>
-            <p className="mt-3 text-sm text-slate-600">
-              These requests go directly into the connected blood bank dashboards in the same merged application.
-            </p>
-
-            <div className="mt-6 grid gap-4">
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-700">Blood Bank</span>
-                <select value={requestForm.bloodBankId} onChange={(event) => setRequestForm((current) => ({ ...current, bloodBankId: event.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100" required>
-                  <option value="">Select blood bank</option>
-                  {portal.bloodBanks.map((bank) => (
-                    <option key={bank.id} value={bank.id}>
-                      {bank.hospitalName} - {bank.district}, {bank.state}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                <label className="space-y-2">
-                  <span className="text-sm font-medium text-slate-700">Blood Type</span>
-                  <select value={requestForm.bloodType} onChange={(event) => setRequestForm((current) => ({ ...current, bloodType: event.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100">
-                    {BLOOD_TYPES.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-2">
-                  <span className="text-sm font-medium text-slate-700">Component</span>
-                  <select value={requestForm.component} onChange={(event) => setRequestForm((current) => ({ ...current, component: event.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100">
-                    {BLOOD_COMPONENTS.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-2">
-                  <span className="text-sm font-medium text-slate-700">Units</span>
-                  <input type="number" min="1" value={requestForm.requestedUnits} onChange={(event) => setRequestForm((current) => ({ ...current, requestedUnits: event.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100" />
-                </label>
-              </div>
-
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-700">Patient Name</span>
-                <input value={requestForm.patientName} onChange={(event) => setRequestForm((current) => ({ ...current, patientName: event.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100" placeholder="Patient or case name" required />
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-700">Contact Phone</span>
-                <input value={requestForm.requesterPhone} onChange={(event) => setRequestForm((current) => ({ ...current, requesterPhone: event.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100" placeholder="Emergency contact number" required />
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-700">Clinical Notes</span>
-                <textarea value={requestForm.message} onChange={(event) => setRequestForm((current) => ({ ...current, message: event.target.value }))} className="min-h-28 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100" placeholder="Add urgency or transfusion notes for the blood bank team." />
-              </label>
-            </div>
-
-            <button type="submit" disabled={submittingRequest} className="mt-6 w-full rounded-2xl bg-rose-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-70">
-              {submittingRequest ? "Sending request..." : "Send Blood Request"}
+            <button
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+                router.push("/hospital/login");
+              }}
+              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Logout
             </button>
-          </form>
-        </section>
+          </header>
 
-        <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-          <div className="rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-emerald-600">Doctors</p>
-                <h2 className="mt-2 text-2xl font-semibold text-slate-900">Linked doctor roster</h2>
-              </div>
-              <Link href="/doctor/register" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
-                Register doctor
-              </Link>
-            </div>
+          {message ? <div className="mt-5 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">{message}</div> : null}
 
-            <div className="mt-6 space-y-4">
-              {portal.doctors.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-                  No doctors are linked yet. Use doctor registration to add the first doctor to this hospital.
-                </div>
-              ) : (
-                portal.doctors.map((doctor) => (
-                  <div key={doctor.id} className="rounded-3xl border border-slate-200 p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-lg font-semibold text-slate-900">{doctor.name}</p>
-                        <p className="mt-1 text-sm font-medium text-sky-700">{doctor.specialty}</p>
-                      </div>
-                      <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-                        {doctor.experience}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm text-slate-600">{doctor.qualification}</p>
-                    <p className="mt-2 text-xs uppercase tracking-[0.2em] text-slate-400">Availability</p>
-                    <p className="mt-1 text-sm text-slate-600">{doctor.available}</p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <div className="rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200">
-              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-violet-600">Appointments</p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-900">Upcoming consultations</h2>
-
-              <div className="mt-6 space-y-4">
-                {portal.appointments.length === 0 ? (
-                  <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-                    No appointments have been booked for this hospital yet.
-                  </div>
-                ) : (
-                  portal.appointments.slice(0, 8).map((appointment) => (
-                    <div key={appointment.id} className="rounded-3xl border border-slate-200 p-5">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="text-lg font-semibold text-slate-900">{appointment.name}</p>
-                          <p className="mt-1 text-sm text-slate-600">{appointment.doctor.name}</p>
-                          <p className="mt-1 text-sm text-slate-500">{new Date(appointment.appointmentDate).toLocaleDateString()} at {appointment.appointmentTime}</p>
-                        </div>
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClasses[appointment.status] || "bg-slate-100 text-slate-700"}`}>
-                          {appointment.status}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-sm text-slate-600">{appointment.problem}</p>
-                      <p className="mt-2 text-xs text-slate-400">{appointment.phone}{appointment.user?.email ? ` - ${appointment.user.email}` : ""}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200">
-              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-rose-500">Requests</p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-900">Blood request history</h2>
-
-              <div className="mt-6 space-y-4">
-                {portal.requests.length === 0 ? (
-                  <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-                    No blood requests sent yet.
-                  </div>
-                ) : (
-                  portal.requests.map((request) => (
-                    <div key={request.id} className="rounded-3xl border border-slate-200 p-5">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="text-lg font-semibold text-slate-900">{request.patientName || "Patient not specified"}</p>
-                          <p className="mt-1 text-sm text-slate-600">
-                            {request.bloodType} - {request.component} - {request.requestedUnits} unit{request.requestedUnits > 1 ? "s" : ""}
-                          </p>
-                          <p className="mt-1 text-sm text-slate-500">{request.bloodBank.hospitalName}</p>
-                        </div>
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClasses[request.status] || "bg-slate-100 text-slate-700"}`}>
-                          {request.status}
-                        </span>
-                      </div>
-                      {request.message ? <p className="mt-3 text-sm text-slate-600">{request.message}</p> : null}
-                      <p className="mt-2 text-xs text-slate-400">Created {new Date(request.createdAt).toLocaleString()}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200">
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">Connected Blood Banks</p>
-          <h2 className="mt-2 text-2xl font-semibold text-slate-900">Live inventory snapshot</h2>
-
-          <div className="mt-6 grid gap-4 lg:grid-cols-3">
-            {portal.bloodBanks.map((bank) => (
-              <div key={bank.id} className="rounded-3xl border border-slate-200 p-5">
-                <p className="text-lg font-semibold text-slate-900">{bank.hospitalName}</p>
-                <p className="mt-1 text-sm text-slate-500">{bank.district}, {bank.state}</p>
-                <p className="mt-1 text-sm text-slate-500">{bank.contact}</p>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {bank.bloodGroups.slice(0, 4).map((group) => (
-                    <span key={group.id} className={`rounded-full px-3 py-1 text-xs font-semibold ${group.available ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                      {group.type} {group.component} ({group.units})
-                    </span>
-                  ))}
-                </div>
+          <section id="overview" className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+            {cards.map(([label, value]) => (
+              <div key={label} className="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">{label}</p>
+                <p className="mt-3 text-3xl font-semibold">{value}</p>
               </div>
             ))}
-          </div>
+          </section>
+
+          <section id="profile" className="mt-6 rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">Hospital profile</h3>
+                <p className="mt-1 text-sm text-slate-500">{portal.hospital.address || "Complete address pending"} {portal.hospital.city ? `, ${portal.hospital.city}` : ""}</p>
+                <p className="mt-1 text-sm text-slate-500">Contact: {portal.hospital.phone || "Not set"} | Code: {portal.hospital.code || "Generating"}</p>
+              </div>
+              <button
+                onClick={() => mutate("PUT", { action: "profile", ...profileForm }, "Hospital profile saved.")}
+                disabled={saving === "profile"}
+                className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {saving === "profile" ? "Saving..." : "Save profile"}
+              </button>
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              {(["city", "state", "phone", "pincode", "website", "specialties"] as const).map((key) => (
+                <input key={key} value={String(profileForm[key])} onChange={(event) => setProfileForm((current) => ({ ...current, [key]: event.target.value }))} placeholder={key} className="rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-sky-400" />
+              ))}
+              <textarea value={profileForm.address} onChange={(event) => setProfileForm((current) => ({ ...current, address: event.target.value }))} placeholder="Address" className="min-h-24 rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-sky-400 md:col-span-2" />
+              <textarea value={profileForm.description} onChange={(event) => setProfileForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" className="min-h-24 rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-sky-400 md:col-span-2" />
+            </div>
+          </section>
+
+          <section className="mt-6 grid gap-6 xl:grid-cols-2">
+            <div id="doctors" className="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
+              <h3 className="text-lg font-semibold">Doctor management</h3>
+              <form
+                className="mt-4 grid gap-3"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  const method = doctorForm.id ? "PUT" : "POST";
+                  const payload = await mutate(method, { action: "doctor", ...doctorForm }, doctorForm.id ? "Doctor updated." : "Doctor added.");
+                  if (payload) setDoctorForm(emptyDoctor);
+                }}
+              >
+                <div className="grid gap-3 md:grid-cols-2">
+                  <input value={doctorForm.name} onChange={(event) => setDoctorForm((current) => ({ ...current, name: event.target.value }))} placeholder="Doctor name" className="rounded-lg border border-slate-200 px-3 py-2" required />
+                  <input value={doctorForm.department} onChange={(event) => setDoctorForm((current) => ({ ...current, department: event.target.value }))} placeholder="Department" className="rounded-lg border border-slate-200 px-3 py-2" />
+                  <input value={doctorForm.specialty} onChange={(event) => setDoctorForm((current) => ({ ...current, specialty: event.target.value }))} placeholder="Specialization" className="rounded-lg border border-slate-200 px-3 py-2" required />
+                  <input value={doctorForm.contact} onChange={(event) => setDoctorForm((current) => ({ ...current, contact: event.target.value }))} placeholder="Contact" className="rounded-lg border border-slate-200 px-3 py-2" />
+                  <input value={doctorForm.experience} onChange={(event) => setDoctorForm((current) => ({ ...current, experience: event.target.value }))} placeholder="Experience" className="rounded-lg border border-slate-200 px-3 py-2" />
+                  <input value={doctorForm.available} onChange={(event) => setDoctorForm((current) => ({ ...current, available: event.target.value }))} placeholder="Availability" className="rounded-lg border border-slate-200 px-3 py-2" />
+                </div>
+                <input value={doctorForm.qualification} onChange={(event) => setDoctorForm((current) => ({ ...current, qualification: event.target.value }))} placeholder="Qualification" className="rounded-lg border border-slate-200 px-3 py-2" />
+                <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">{doctorForm.id ? "Update doctor" : "Add doctor"}</button>
+              </form>
+              <div className="mt-5 overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <tbody>
+                    {portal.doctors.map((doctor) => (
+                      <tr key={doctor.id} className="border-t border-slate-100">
+                        <td className="py-3 pr-3"><b>{doctor.name}</b><br /><span className="text-slate-500">{doctor.department || doctor.specialty}</span></td>
+                        <td className="py-3 pr-3">{doctor.available}</td>
+                        <td className="py-3 text-right">
+                          <button onClick={() => setDoctorForm({ ...emptyDoctor, ...doctor, id: String(doctor.id), department: doctor.department ?? "", contact: doctor.contact ?? "" })} className="mr-3 font-semibold text-sky-700">Edit</button>
+                          <button onClick={() => mutate("DELETE", { action: "doctor", id: doctor.id }, "Doctor deleted.")} className="font-semibold text-rose-700">Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div id="patients" className="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
+              <h3 className="text-lg font-semibold">Patient management</h3>
+              <form
+                className="mt-4 grid gap-3"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  const payload = await mutate("POST", { action: "patient", ...patientForm }, "Patient added.");
+                  if (payload) setPatientForm(emptyPatient);
+                }}
+              >
+                <div className="grid gap-3 md:grid-cols-2">
+                  <input value={patientForm.name} onChange={(event) => setPatientForm((current) => ({ ...current, name: event.target.value }))} placeholder="Patient name" className="rounded-lg border border-slate-200 px-3 py-2" required />
+                  <input value={patientForm.age} onChange={(event) => setPatientForm((current) => ({ ...current, age: event.target.value }))} placeholder="Age" type="number" className="rounded-lg border border-slate-200 px-3 py-2" />
+                  <input value={patientForm.gender} onChange={(event) => setPatientForm((current) => ({ ...current, gender: event.target.value }))} placeholder="Gender" className="rounded-lg border border-slate-200 px-3 py-2" />
+                  <input value={patientForm.phone} onChange={(event) => setPatientForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Phone" className="rounded-lg border border-slate-200 px-3 py-2" />
+                  <select value={patientForm.bloodGroup} onChange={(event) => setPatientForm((current) => ({ ...current, bloodGroup: event.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2">
+                    <option value="">Blood group</option>
+                    {BLOOD_TYPES.map((type) => <option key={type}>{type}</option>)}
+                  </select>
+                  <input value={patientForm.primaryConcern} onChange={(event) => setPatientForm((current) => ({ ...current, primaryConcern: event.target.value }))} placeholder="Primary concern" className="rounded-lg border border-slate-200 px-3 py-2" />
+                </div>
+                <button className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white">Add patient</button>
+              </form>
+              <div className="mt-5 space-y-3">
+                {portal.patients.slice(0, 8).map((patient) => (
+                  <div key={patient.id} className="rounded-lg border border-slate-200 p-3">
+                    <p className="font-semibold">{patient.name} {patient.age ? `(${patient.age})` : ""}</p>
+                    <p className="text-sm text-slate-500">{patient.bloodGroup || "Blood group not set"} | {patient.phone || "No phone"} | {patient.primaryConcern || "No concern recorded"}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+            <form
+              id="blood-requests"
+              className="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                const payload = await mutate("POST", { action: "blood-request", ...requestForm }, "Blood request submitted.");
+                if (payload) setRequestForm((current) => ({ ...emptyRequest, requesterPhone: current.requesterPhone }));
+              }}
+            >
+              <h3 className="text-lg font-semibold">Request blood</h3>
+              <div className="mt-4 grid gap-3">
+                <select value={requestForm.bloodBankId} onChange={(event) => setRequestForm((current) => ({ ...current, bloodBankId: event.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2" required>
+                  <option value="">Choose blood bank</option>
+                  {portal.bloodBanks.map((bank) => <option key={bank.id} value={bank.id}>{bank.hospitalName} - {bank.district}</option>)}
+                </select>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <select value={requestForm.bloodType} onChange={(event) => setRequestForm((current) => ({ ...current, bloodType: event.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2">{BLOOD_TYPES.map((type) => <option key={type}>{type}</option>)}</select>
+                  <select value={requestForm.component} onChange={(event) => setRequestForm((current) => ({ ...current, component: event.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2">{BLOOD_COMPONENTS.map((component) => <option key={component}>{component}</option>)}</select>
+                  <input value={requestForm.requestedUnits} onChange={(event) => setRequestForm((current) => ({ ...current, requestedUnits: event.target.value }))} min="1" type="number" className="rounded-lg border border-slate-200 px-3 py-2" />
+                </div>
+                <input value={requestForm.patientName} onChange={(event) => setRequestForm((current) => ({ ...current, patientName: event.target.value }))} placeholder="Patient name" className="rounded-lg border border-slate-200 px-3 py-2" required />
+                <input value={requestForm.requesterPhone} onChange={(event) => setRequestForm((current) => ({ ...current, requesterPhone: event.target.value }))} placeholder="Contact phone" className="rounded-lg border border-slate-200 px-3 py-2" required />
+                <div className="grid gap-3 md:grid-cols-2">
+                  <select value={requestForm.urgency} onChange={(event) => setRequestForm((current) => ({ ...current, urgency: event.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2">
+                    <option value="routine">Routine</option>
+                    <option value="urgent">Urgent</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                  <input value={requestForm.requiredDate} onChange={(event) => setRequestForm((current) => ({ ...current, requiredDate: event.target.value }))} type="date" className="rounded-lg border border-slate-200 px-3 py-2" />
+                </div>
+                <textarea value={requestForm.reason} onChange={(event) => setRequestForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Reason / clinical note" className="min-h-24 rounded-lg border border-slate-200 px-3 py-2" />
+                <button className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white">Send request</button>
+              </div>
+            </form>
+
+            <div className="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
+              <h3 className="text-lg font-semibold">Request history and alerts</h3>
+              <div className="mt-4 space-y-3">
+                {portal.requests.map((request) => (
+                  <div key={request.id} className="rounded-lg border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold">{request.patientName || "Patient"} - {request.bloodType} {request.component}</p>
+                        <p className="text-sm text-slate-500">{request.requestedUnits} units from {request.bloodBank.hospitalName} | {request.urgency || "routine"}</p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusClasses[request.status]}`}>{request.status}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-500">{request.reason || "No reason recorded"}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section id="inventory" className="mt-6 rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <h3 className="text-lg font-semibold">Inventory availability</h3>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {inventoryMatches.map((row, index) => (
+                <div key={`${row.id}-${index}`} className="rounded-lg border border-slate-200 p-4">
+                  <p className="text-xl font-semibold">{row.type}</p>
+                  <p className="text-sm text-slate-500">{row.component}</p>
+                  <p className="mt-2 text-sm">{row.units} units at {row.bank}</p>
+                  <span className={`mt-3 inline-block rounded-full px-3 py-1 text-xs font-semibold ${row.available ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{row.available ? "Available" : "Unavailable"}</span>
+                </div>
+              ))}
+            </div>
+          </section>
         </section>
       </div>
     </main>

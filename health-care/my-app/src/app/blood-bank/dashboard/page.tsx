@@ -28,9 +28,18 @@ type BloodRequest = {
   bloodType: string;
   component: string;
   requestedUnits: number;
+  urgency?: string | null;
+  reason?: string | null;
+  requiredDate?: string | null;
   message?: string | null;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "delivered";
   createdAt: string;
+  hospital?: {
+    id: number;
+    name: string;
+    code?: string | null;
+    city?: string | null;
+  } | null;
 };
 
 type BloodBankPayload = {
@@ -166,7 +175,7 @@ export default function BloodBankDashboardPage() {
     }
   };
 
-  const reviewRequest = async (requestId: number, action: "approved" | "rejected") => {
+  const reviewRequest = async (requestId: number, action: "approved" | "rejected" | "delivered") => {
     setActiveRequestId(requestId);
     setMessage("");
     const matchingRequest = requests.find((request) => request.id === requestId) ?? null;
@@ -189,7 +198,7 @@ export default function BloodBankDashboardPage() {
 
       setRequests((current) =>
         current.map((request) =>
-          request.id === requestId ? { ...request, status: action } : request,
+          request.id === requestId ? { ...request, ...payload.request } : request,
         ),
       );
 
@@ -232,7 +241,10 @@ export default function BloodBankDashboardPage() {
   }
 
   const totalUnits = inventory.reduce((sum, row) => sum + (Number(row.units) || 0), 0);
+  const availableUnits = inventory.filter((row) => Number(row.units) > 0).reduce((sum, row) => sum + (Number(row.units) || 0), 0);
+  const lowStockAlerts = inventory.filter((row) => Number(row.units) > 0 && Number(row.units) <= 2).length;
   const pendingRequests = requests.filter((request) => request.status === "pending").length;
+  const approvedRequests = requests.filter((request) => request.status === "approved").length;
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-slate-100 px-6 py-8">
@@ -258,18 +270,26 @@ export default function BloodBankDashboardPage() {
             </button>
           </div>
 
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
+          <div className="mt-8 grid gap-4 md:grid-cols-5">
             <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Email</p>
-              <p className="mt-2 text-lg font-semibold">{session?.email}</p>
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Total Stock</p>
+              <p className="mt-2 text-lg font-semibold">{totalUnits}</p>
             </div>
             <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Total Units Listed</p>
-              <p className="mt-2 text-lg font-semibold">{totalUnits}</p>
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Available Units</p>
+              <p className="mt-2 text-lg font-semibold">{availableUnits}</p>
+            </div>
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Low Stock</p>
+              <p className="mt-2 text-lg font-semibold">{lowStockAlerts}</p>
             </div>
             <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
               <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Pending Requests</p>
               <p className="mt-2 text-lg font-semibold">{pendingRequests}</p>
+            </div>
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Approved</p>
+              <p className="mt-2 text-lg font-semibold">{approvedRequests}</p>
             </div>
           </div>
         </section>
@@ -478,16 +498,26 @@ export default function BloodBankDashboardPage() {
                     <div>
                       <p className="text-lg font-semibold text-slate-900">{request.requesterName}</p>
                       <p className="mt-1 text-sm text-slate-600">
-                        {request.bloodType} · {request.component} · {request.requestedUnits} unit{request.requestedUnits > 1 ? "s" : ""}
+                        {request.bloodType} - {request.component} - {request.requestedUnits} unit{request.requestedUnits > 1 ? "s" : ""}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {request.hospital?.name || request.requesterName}
+                        {request.hospital?.code ? ` (${request.hospital.code})` : ""}
+                        {request.hospital?.city ? ` - ${request.hospital.city}` : ""}
                       </p>
                       <p className="mt-1 text-sm text-slate-500">{request.requesterEmail}</p>
                       {request.requesterPhone ? <p className="mt-1 text-sm text-slate-500">{request.requesterPhone}</p> : null}
                       {request.patientName ? <p className="mt-1 text-sm text-slate-500">Patient: {request.patientName}</p> : null}
+                      {request.urgency ? <p className="mt-1 text-sm font-semibold text-rose-600">Urgency: {request.urgency}</p> : null}
+                      {request.requiredDate ? <p className="mt-1 text-sm text-slate-500">Required by {new Date(request.requiredDate).toLocaleDateString()}</p> : null}
+                      {request.reason ? <p className="mt-3 text-sm text-slate-600">{request.reason}</p> : null}
                       {request.message ? <p className="mt-3 text-sm text-slate-600">{request.message}</p> : null}
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
                       request.status === "approved"
                         ? "bg-emerald-50 text-emerald-700"
+                        : request.status === "delivered"
+                          ? "bg-sky-50 text-sky-700"
                         : request.status === "rejected"
                           ? "bg-rose-50 text-rose-700"
                           : "bg-amber-50 text-amber-700"
@@ -512,6 +542,14 @@ export default function BloodBankDashboardPage() {
                       className="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Reject
+                    </button>
+                    <button
+                      type="button"
+                      disabled={request.status !== "approved" || activeRequestId === request.id}
+                      onClick={() => reviewRequest(request.id, "delivered")}
+                      className="rounded-full border border-sky-200 px-4 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Mark delivered
                     </button>
                     <p className="self-center text-xs text-slate-400">
                       Requested on {new Date(request.createdAt).toLocaleString()}

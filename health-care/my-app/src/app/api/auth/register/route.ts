@@ -1,9 +1,21 @@
 import { prisma } from "../../../../lib/prisma";
 import { serializeAccountExtra } from "../../../../lib/accountMeta";
 import { hashPassword, setAuthSession, type SessionPayload } from "../../../../lib/auth";
+import { slugify } from "../../../../lib/tenant";
+import type { PrismaClient } from "../../../../generated/prisma";
 
-function normalizeRole(role: string) {
-  return role === "blood-bank" ? "blood_bank" : role;
+type TransactionClient = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
+
+function normalizeRole(role: string): "user" | "hospital" | "doctor" | "blood_bank" {
+  if (role === "blood-bank") {
+    return "blood_bank";
+  }
+
+  if (role === "user" || role === "hospital" || role === "doctor" || role === "blood_bank") {
+    return role;
+  }
+
+  return "user";
 }
 
 export async function POST(req: Request) {
@@ -36,7 +48,7 @@ export async function POST(req: Request) {
       return Response.json({ error: "License or center ID is required." }, { status: 400 });
     }
 
-    const account = await prisma.$transaction(async (tx: any) => {
+    const account = await prisma.$transaction(async (tx: TransactionClient) => {
       const createdAccount = await tx.authAccount.create({
         data: {
           role: normalizedRole,
@@ -67,10 +79,17 @@ export async function POST(req: Request) {
           data: {
             name: normalizedName,
             email: normalizedEmail,
-            username: normalizedEmail.replace(/[^a-z0-9]+/gi, "-").toLowerCase(),
+            username: slugify(normalizedEmail),
             description: "Complete your hospital profile to appear in public searches.",
             specialties: [],
             profileCompleted: false,
+          },
+        });
+        const hospitalWithIdentity = await tx.hospital.update({
+          where: { id: hospitalRecord.id },
+          data: {
+            code: `HSP-${String(hospitalRecord.id).padStart(5, "0")}`,
+            slug: `${slugify(normalizedName) || "hospital"}-${hospitalRecord.id}`,
           },
         });
 
@@ -80,7 +99,7 @@ export async function POST(req: Request) {
             extra: serializeAccountExtra({
               label: extraValue,
               licenseId: extraValue,
-              hospitalId: hospitalRecord.id,
+              hospitalId: hospitalWithIdentity.id,
             }),
           },
         });

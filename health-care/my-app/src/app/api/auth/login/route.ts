@@ -1,6 +1,7 @@
 import { prisma } from "../../../../lib/prisma";
 import { parseAccountExtra, serializeAccountExtra } from "../../../../lib/accountMeta";
 import { setAuthSession, verifyPassword, type SessionPayload } from "../../../../lib/auth";
+import { ensureHospitalIdentity, slugify } from "../../../../lib/tenant";
 
 function mapRole(role: string) {
   return role === "blood-bank" ? "blood_bank" : role;
@@ -18,7 +19,7 @@ async function ensureHospitalExtra(account: {
     return account.extra;
   }
 
-  const hospital =
+  const hospitalRecord =
     (await prisma.hospital.findFirst({
       where: {
         OR: [
@@ -32,12 +33,13 @@ async function ensureHospitalExtra(account: {
       data: {
         name: account.name,
         email: account.email,
-        username: account.email.replace(/[^a-z0-9]+/gi, "-").toLowerCase(),
+        username: slugify(account.email),
         description: "Complete your hospital profile to appear in public searches.",
         specialties: [],
         profileCompleted: false,
       },
     }));
+  const hospital = await ensureHospitalIdentity(hospitalRecord);
 
   const nextExtra = serializeAccountExtra({
     label: metadata?.label ?? account.extra,

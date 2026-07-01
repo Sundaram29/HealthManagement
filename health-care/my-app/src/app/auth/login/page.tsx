@@ -13,7 +13,13 @@ const LoginContent = () => {
 
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirectTo") || "/";
+  const requestedRedirect = searchParams.get("redirectTo");
+  const redirectTo =
+    requestedRedirect &&
+    requestedRedirect.startsWith("/") &&
+    !requestedRedirect.startsWith("/auth/login")
+      ? requestedRedirect
+      : "/";
 
   const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -47,7 +53,6 @@ const LoginContent = () => {
 
       toast.success("User login successful");
       router.replace(redirectTo);
-      router.refresh();
     } catch (error) {
       console.error("User login failed:", error);
       toast.error("Unable to sign in right now. Please try again.");

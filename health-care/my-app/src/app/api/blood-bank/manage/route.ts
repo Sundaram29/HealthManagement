@@ -37,6 +37,9 @@ async function findOwnedBloodBank(accountId: string, fallbackName: string) {
         orderBy: [{ type: "asc" }, { component: "asc" }],
       },
       requests: {
+        include: {
+          hospital: true,
+        },
         orderBy: { createdAt: "desc" },
       },
     },
@@ -112,6 +115,9 @@ export async function POST(req: Request) {
               orderBy: [{ type: "asc" }, { component: "asc" }],
             },
             requests: {
+              include: {
+                hospital: true,
+              },
               orderBy: { createdAt: "desc" },
             },
           },
@@ -135,6 +141,9 @@ export async function POST(req: Request) {
               orderBy: [{ type: "asc" }, { component: "asc" }],
             },
             requests: {
+              include: {
+                hospital: true,
+              },
               orderBy: { createdAt: "desc" },
             },
           },

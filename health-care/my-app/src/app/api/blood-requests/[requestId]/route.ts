@@ -29,7 +29,7 @@ export async function PATCH(
     const body = await req.json();
     const action = String(body?.action ?? "").trim().toLowerCase();
 
-    if (!id || !["approved", "rejected"].includes(action)) {
+    if (!id || !["approved", "rejected", "delivered"].includes(action)) {
       return Response.json({ error: "Invalid request action." }, { status: 400 });
     }
 
@@ -50,6 +50,23 @@ export async function PATCH(
       return Response.json({ error: "Request not found." }, { status: 404 });
     }
 
+    if (action === "delivered") {
+      if (requestRecord.status !== "approved") {
+        return Response.json({ error: "Only approved requests can be marked delivered." }, { status: 409 });
+      }
+
+      const deliveredRequest = await prisma.bloodRequest.update({
+        where: { id: requestRecord.id },
+        data: {
+          status: "delivered",
+          reviewedAt: new Date(),
+        },
+        include: { hospital: true },
+      });
+
+      return Response.json({ ok: true, request: deliveredRequest });
+    }
+
     if (requestRecord.status !== "pending") {
       return Response.json({ error: "This request has already been reviewed." }, { status: 409 });
     }
@@ -61,6 +78,7 @@ export async function PATCH(
           status: "rejected",
           reviewedAt: new Date(),
         },
+        include: { hospital: true },
       });
 
       return Response.json({ ok: true, request: updatedRequest });
@@ -96,6 +114,7 @@ export async function PATCH(
           status: "approved",
           reviewedAt: new Date(),
         },
+        include: { hospital: true },
       });
     });
 
