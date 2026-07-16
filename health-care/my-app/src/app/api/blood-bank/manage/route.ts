@@ -80,11 +80,12 @@ export async function POST(req: Request) {
     const hospitalName = String(profile.hospitalName ?? auth.account.name).trim();
     const state = String(profile.state ?? "").trim();
     const district = String(profile.district ?? "").trim();
+    const city = String(profile.city ?? profile.district ?? "").trim();
     const address = String(profile.address ?? "").trim();
     const contact = String(profile.contact ?? "").trim();
 
-    if (!hospitalName || !state || !district || !address || !contact) {
-      return Response.json({ error: "Blood bank name, state, city/district, address, and contact are required." }, { status: 400 });
+    if (!hospitalName || !state || !district || !city || !address || !contact) {
+      return Response.json({ error: "Blood bank name, state, district, city, address, and contact are required." }, { status: 400 });
     }
 
     if (inventory.length === 0) {
@@ -99,8 +100,10 @@ export async function POST(req: Request) {
           data: {
             authAccountId: auth.account.id,
             hospitalName,
+            centreType: "STANDALONE_BLOOD_BANK",
             state,
             district,
+            city,
             address,
             contact,
             bloodGroups: {
@@ -126,8 +129,10 @@ export async function POST(req: Request) {
           data: {
             authAccountId: auth.account.id,
             hospitalName,
+            centreType: "STANDALONE_BLOOD_BANK",
             state,
             district,
+            city,
             address,
             contact,
             bloodGroups: {

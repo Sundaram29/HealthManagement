@@ -14,6 +14,11 @@ enum AuthRole {
   blood_bank
 }
 
+enum BloodCentreType {
+  HOSPITAL
+  STANDALONE_BLOOD_BANK
+}
+
 model AuthAccount {
   id           String   @id @default(cuid())
   role         AuthRole
@@ -147,8 +152,10 @@ model Appointment {
 
 model BloodBank {
   id            Int               @id @default(autoincrement())
+  centreType    BloodCentreType    @default(STANDALONE_BLOOD_BANK)
   state         String
   district      String
+  city          String             @default("")
   hospitalName  String
   address       String
   contact       String
@@ -172,6 +179,9 @@ model BloodInventory {
 
   bloodBankId   Int
   bloodBank     BloodBank @relation(fields: [bloodBankId], references: [id], onDelete: Cascade)
+
+  @@index([type, component])
+  @@index([bloodBankId, type])
 }
 
 enum BloodRequestStatus {

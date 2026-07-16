@@ -1,6 +1,7 @@
 ﻿"use client";
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import Footer from "../components/footer/page";
+import { STATES, getDistrictsForState } from "../../lib/locations";
 // ─── Data ──────────────────────────────────────────────────────────────────────
 
 
@@ -23,29 +24,13 @@ type ToastMessage = {
   type: "error" | "success";
 };
 
-type BloodInventoryRecord = {
-  id?: number;
-  type: string;
-  available: boolean;
-  units: number;
-  component: string;
-  lastUpdated: string;
-};
-
-type BloodBankRecord = {
-  id: number;
-  state: string;
-  district: string;
-  hospitalName: string;
-  address: string;
-  contact: string;
-  bloodGroups: BloodInventoryRecord[];
-};
-
 type SearchRow = {
   hospitalId: number;
   hospitalName: string;
+  centreType: string;
+  state: string;
   district: string;
+  city: string;
   address: string;
   contact: string;
   bloodType: string;
@@ -53,6 +38,19 @@ type SearchRow = {
   units: number;
   component: string;
   lastUpdated: string;
+};
+
+type AvailabilityApiCentre = {
+  id: number;
+  name: string;
+  type: "HOSPITAL" | "STANDALONE_BLOOD_BANK";
+  state: string;
+  district: string;
+  city: string;
+  address: string;
+  contact: string;
+  unitsAvailable: number;
+  lastUpdated: string | null;
 };
 
 // ─── Styles ────────────────────────────────────────────────────────────────────
@@ -121,6 +119,9 @@ const STYLES = `
     background: white;
     border-bottom: 1px solid var(--border);
     padding: 1.25rem 2rem;
+    position: sticky;
+    top: 64px;
+    z-index: 30;
   }
   .filter-grid {
     display: flex;
@@ -433,34 +434,12 @@ export default function BloodAvailability() {
   const [searched, setSearched] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
-  const [data, setData] = useState<BloodBankRecord[]>([]);
+  const [loadingResults, setLoadingResults] = useState(false);
 
-  useEffect(() => {
-    const loadBloodBanks = async () => {
-      try {
-        const response = await fetch("/api/blood");
-        if (!response.ok) {
-          throw new Error("Failed to fetch blood bank data");
-        }
-        const result = await response.json();
-        setData(Array.isArray(result) ? result : []);
-      } catch (error) {
-        console.error("Blood availability fetch failed:", error);
-        addToast("Unable to load data", "Blood availability data could not be fetched.", "error");
-      }
-    };
+  const states = STATES;
+  const districts = getDistrictsForState(selectedState);
 
-    loadBloodBanks();
-  }, [addToast]);
-
-  const states = [...new Set(data.map((bank) => bank.state))];
-  const districts = [...new Set(
-    data
-      .filter((bank) => bank.state === selectedState)
-      .map((bank) => bank.district)
-  )];
-
-  const handleSearch = useCallback(() => {
+  const handleSearch = useCallback(async () => {
     if (!selectedState && selectedBlood === "All") {
       addToast("Missing filters", "Please select a State and Blood Group to search.", "error");
       return;
@@ -474,48 +453,61 @@ export default function BloodAvailability() {
       return;
     }
 
-    const filtered = data.filter((bank) => {
-      const ms = bank.state === selectedState;
-      const md = selectedDistrict ? bank.district === selectedDistrict : true;
-      const mh = hospitalSearch
-        ? bank.hospitalName.toLowerCase().includes(hospitalSearch.toLowerCase())
-        : true;
-      return ms && md && mh;
-    });
+    setLoadingResults(true);
 
-    const result: SearchRow[] = [];
-    filtered.forEach((bank) => {
-      bank.bloodGroups.forEach((bg) => {
-        const mb = bg.type === selectedBlood;
-        const mc = selectedComponent === "All Components" ? true : bg.component === selectedComponent;
-        const ma = bg.available && bg.units > 0;
-        if (mb && mc && ma) {
-          result.push({
-            hospitalId: bank.id,
-            hospitalName: bank.hospitalName,
-            district: bank.district,
-            address: bank.address,
-            contact: bank.contact,
-            bloodType: bg.type,
-            available: bg.available,
-            units: bg.units,
-            component: bg.component,
-            lastUpdated: new Date(bg.lastUpdated).toLocaleString(),
-          });
-        }
+    try {
+      const params = new URLSearchParams({
+        state: selectedState,
+        bloodGroup: selectedBlood,
       });
-    });
+      if (selectedDistrict) params.set("district", selectedDistrict);
+      if (selectedComponent !== "All Components") params.set("component", selectedComponent);
 
-    setRows(result);
-    setSearched(true);
-    setCurrentPage(1);
+      const response = await fetch(`/api/blood-availability?${params.toString()}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => ({ error: "Unable to parse server response." }));
 
-    if (result.length === 0) {
-      addToast("No results", `No blood banks found for ${selectedBlood} in ${selectedState}.`, "error");
-    } else {
-      addToast("Results found", `${result.length} blood bank record${result.length > 1 ? "s" : ""} found.`, "success");
+      if (!response.ok) {
+        throw new Error(payload?.error || "Blood availability data could not be fetched.");
+      }
+
+      const result: SearchRow[] = ((payload.results ?? []) as AvailabilityApiCentre[])
+        .filter((centre) =>
+          hospitalSearch
+            ? String(centre.name ?? "").toLowerCase().includes(hospitalSearch.toLowerCase())
+            : true,
+        )
+        .map((centre) => ({
+          hospitalId: centre.id,
+          hospitalName: centre.name,
+          centreType: centre.type === "HOSPITAL" ? "Hospital" : "Standalone Blood Bank",
+          state: centre.state,
+          district: centre.district,
+          city: centre.city,
+          address: centre.address,
+          contact: centre.contact,
+          bloodType: selectedBlood,
+          available: Number(centre.unitsAvailable) > 0,
+          units: Number(centre.unitsAvailable) || 0,
+          component: selectedComponent === "All Components" ? "All components" : selectedComponent,
+          lastUpdated: centre.lastUpdated ? new Date(centre.lastUpdated).toLocaleString() : "Just now",
+        }));
+
+      setRows(result);
+      setSearched(true);
+      setCurrentPage(1);
+
+      if (result.length === 0) {
+        addToast("No results", `No blood centres found for ${selectedBlood} in ${selectedState}.`, "error");
+      } else {
+        addToast("Results found", `${result.length} blood centre record${result.length > 1 ? "s" : ""} found.`, "success");
+      }
+    } catch (error) {
+      console.error("Blood availability search failed:", error);
+      addToast("Unable to search", error instanceof Error ? error.message : "Blood availability data could not be fetched.", "error");
+    } finally {
+      setLoadingResults(false);
     }
-  }, [selectedState, selectedDistrict, hospitalSearch, selectedBlood, selectedComponent, data, addToast]);
+  }, [selectedState, selectedDistrict, hospitalSearch, selectedBlood, selectedComponent, addToast]);
 
   const filteredRows = tableSearch
     ? rows.filter((r) =>
@@ -594,11 +586,11 @@ export default function BloodAvailability() {
             </div>
 
             {/* Search */}
-            <button className="search-btn" onClick={handleSearch} style={{ marginLeft: "auto" }}>
+            <button className="search-btn" onClick={handleSearch} disabled={loadingResults} style={{ marginLeft: "auto", opacity: loadingResults ? 0.7 : 1 }}>
               <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                 <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
               </svg>
-              Search
+              {loadingResults ? "Searching..." : "Search"}
             </button>
           </div>
 
@@ -664,6 +656,8 @@ export default function BloodAvailability() {
                 <tr>
                   <th>#</th>
                   <th>Blood Center</th>
+                  <th>Type</th>
+                  <th>Location</th>
                   <th>Blood Type</th>
                   <th>Availability</th>
                   <th>Component</th>
@@ -679,7 +673,12 @@ export default function BloodAvailability() {
                     </td>
                     <td>
                       <div className="hospital-name">{row.hospitalName}</div>
-                      <div className="hospital-meta">📍 {row.district} · 📞 {row.contact}</div>
+                      <div className="hospital-meta">Contact: {row.contact}</div>
+                    </td>
+                    <td><span className="comp-tag">{row.centreType}</span></td>
+                    <td>
+                      <div className="hospital-meta">{row.address}</div>
+                      <div className="hospital-meta">{row.city}, {row.district}, {row.state}</div>
                     </td>
                     <td><div className="bt-badge">{row.bloodType}</div></td>
                     <td>
@@ -699,7 +698,7 @@ export default function BloodAvailability() {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={9}>
                       <div className="empty-state">
                         <div className="empty-icon">🩸</div>
                         <div className="empty-title">

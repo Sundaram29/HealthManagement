@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BLOOD_COMPONENTS, BLOOD_TYPES, createDefaultInventory } from "../../../lib/blood";
+import { STATES, getDistrictsForState } from "../../../lib/locations";
 
 type SessionPayload = {
   name: string;
@@ -46,6 +47,7 @@ type BloodBankPayload = {
   id: number;
   state: string;
   district: string;
+  city: string;
   hospitalName: string;
   address: string;
   contact: string;
@@ -57,6 +59,7 @@ const emptyProfile = {
   hospitalName: "",
   state: "",
   district: "",
+  city: "",
   address: "",
   contact: "",
 };
@@ -99,6 +102,7 @@ export default function BloodBankDashboardPage() {
             hospitalName: bank.hospitalName,
             state: bank.state,
             district: bank.district,
+            city: bank.city || bank.district,
             address: bank.address,
             contact: bank.contact,
           });
@@ -161,6 +165,7 @@ export default function BloodBankDashboardPage() {
         hospitalName: bloodBank.hospitalName,
         state: bloodBank.state,
         district: bloodBank.district,
+        city: bloodBank.city || bloodBank.district,
         address: bloodBank.address,
         contact: bloodBank.contact,
       });
@@ -245,6 +250,7 @@ export default function BloodBankDashboardPage() {
   const lowStockAlerts = inventory.filter((row) => Number(row.units) > 0 && Number(row.units) <= 2).length;
   const pendingRequests = requests.filter((request) => request.status === "pending").length;
   const approvedRequests = requests.filter((request) => request.status === "approved").length;
+  const districts = getDistrictsForState(profile.state);
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-slate-100 px-6 py-8">
@@ -338,20 +344,55 @@ export default function BloodBankDashboardPage() {
               </label>
               <label className="space-y-2">
                 <span className="text-sm font-medium text-slate-700">State</span>
-                <input
+                <select
                   value={profile.state}
-                  onChange={(event) => setProfile((current) => ({ ...current, state: event.target.value }))}
+                  onChange={(event) =>
+                    setProfile((current) => ({
+                      ...current,
+                      state: event.target.value,
+                      district: "",
+                      city: "",
+                    }))
+                  }
                   className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
-                  placeholder="State"
-                />
+                >
+                  <option value="">Select state</option>
+                  {STATES.map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-700">City / District</span>
-                <input
+                <span className="text-sm font-medium text-slate-700">District</span>
+                <select
                   value={profile.district}
-                  onChange={(event) => setProfile((current) => ({ ...current, district: event.target.value }))}
+                  onChange={(event) =>
+                    setProfile((current) => ({
+                      ...current,
+                      district: event.target.value,
+                      city: event.target.value,
+                    }))
+                  }
                   className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
-                  placeholder="City or district"
+                  disabled={!profile.state}
+                >
+                  <option value="">{profile.state ? "Select district" : "Select state first"}</option>
+                  {districts.map((district) => (
+                    <option key={district} value={district}>
+                      {district}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-slate-700">City</span>
+                <input
+                  value={profile.city}
+                  onChange={(event) => setProfile((current) => ({ ...current, city: event.target.value }))}
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
+                  placeholder="City"
                 />
               </label>
               <label className="space-y-2 md:col-span-2">
