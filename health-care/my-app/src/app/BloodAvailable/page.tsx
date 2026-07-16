@@ -254,6 +254,9 @@ const STYLES = `
     overflow: hidden;
     box-shadow: var(--shadow);
   }
+  .mobile-list {
+    display: none;
+  }
   table { width: 100%; border-collapse: collapse; }
   thead tr { background: #f8fafc; border-bottom: 1.5px solid var(--border); }
   th {
@@ -351,6 +354,56 @@ const STYLES = `
     height: 32px; border: 1.5px solid var(--border); border-radius: 8px;
     padding: 0 10px; font-size: 0.78rem; font-family: 'Sora', sans-serif;
     color: var(--muted); background: white; cursor: pointer; outline: none;
+  }
+
+  @media (max-width: 900px) {
+    .filter-panel { padding: 1rem 1rem 1.1rem; }
+    .body { padding: 1rem; }
+    .table-header { flex-direction: column; align-items: stretch; gap: 10px; }
+    .search-box { width: 100%; }
+  }
+
+  @media (max-width: 768px) {
+    .header { padding: 0 1rem; min-height: 72px; gap: 0.75rem; }
+    .header-title { font-size: 1.1rem; }
+    .header-subtitle { font-size: 0.65rem; }
+    .header-pill { display: none; }
+    .filter-panel { padding: 1rem; position: static; }
+    .filter-grid { flex-direction: column; align-items: stretch; }
+    .filter-field { width: 100%; }
+    .filter-input, .filter-select, .search-btn { width: 100%; min-width: 0; }
+    .search-btn { justify-content: center; margin-left: 0; }
+    .blood-type-bar { margin-top: 0.75rem; gap: 8px; }
+    .bt-chip { flex: 1 1 calc(50% - 6px); min-width: 0; }
+    .body { padding: 0.9rem; }
+    .stats-row { flex-direction: column; }
+    .stat-card { min-width: 0; }
+    .table-wrap { display: none; }
+    .mobile-list { display: flex; flex-direction: column; gap: 12px; }
+    .mobile-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+    .mobile-card-header { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+    .mobile-card-title { font-weight: 700; color: var(--slate); font-size: 0.92rem; }
+    .mobile-card-sub { font-size: 0.76rem; color: var(--muted); margin-top: 3px; }
+    .mobile-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .mobile-card-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 4px; }
+    .mobile-card-value { font-size: 0.8rem; color: var(--slate); font-weight: 600; }
+    .mobile-card-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+    .mobile-card-actions .contact-btn { width: 100%; }
+  }
+
+  @media (max-width: 480px) {
+    .header { padding: 0 0.85rem; }
+    .body { padding: 0.85rem; }
+    .filter-panel { padding: 0.85rem; }
+    .mobile-card-grid { grid-template-columns: 1fr; }
+    .pagination { flex-direction: column; align-items: flex-start; }
+    .page-controls { width: 100%; justify-content: space-between; flex-wrap: wrap; }
   }
 
   /* ── Toast ── */
@@ -715,6 +768,59 @@ export default function BloodAvailability() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="mobile-list">
+            {paged.length > 0 ? paged.map((row, i) => (
+              <div key={`mobile-${row.hospitalId}-${row.bloodType}-${i}`} className="mobile-card">
+                <div className="mobile-card-header">
+                  <div>
+                    <div className="mobile-card-title">{row.hospitalName}</div>
+                    <div className="mobile-card-sub">{row.centreType}</div>
+                  </div>
+                  <div className="bt-badge">{row.bloodType}</div>
+                </div>
+                <div className="mobile-card-grid">
+                  <div>
+                    <div className="mobile-card-label">Availability</div>
+                    <div className={`avail-pill ${row.available ? "yes" : "no"}`}>
+                      <span className="avail-dot" />
+                      {row.available ? `${row.units} Units` : "Unavailable"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mobile-card-label">Component</div>
+                    <div className="mobile-card-value">{row.component}</div>
+                  </div>
+                  <div>
+                    <div className="mobile-card-label">Location</div>
+                    <div className="mobile-card-value">{row.city}, {row.district}</div>
+                  </div>
+                  <div>
+                    <div className="mobile-card-label">Updated</div>
+                    <div className="mobile-card-value">{row.lastUpdated}</div>
+                  </div>
+                </div>
+                <div className="mobile-card-actions">
+                  <button className="contact-btn"
+                    onClick={() => addToast("Contacting hospital", `Calling ${row.hospitalName}...`, "success")}>
+                    Contact
+                  </button>
+                </div>
+              </div>
+            )) : (
+              <div className="empty-state">
+                <div className="empty-icon">🩸</div>
+                <div className="empty-title">
+                  {!searched ? "Search to find blood availability" : "No records found"}
+                </div>
+                <div className="empty-sub">
+                  {!searched
+                    ? "Select state and blood group, then click Search"
+                    : "Try adjusting your filters"}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Pagination */}
